@@ -14,21 +14,21 @@ import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
 
-contract NftMarket is ERC1155Holder {
+contract DerivativeTokenMarket is ERC1155Holder {
     using Counters for Counters.Counter;
     using SafeMath for uint256;
     using SafeERC20 for ERC20;
 
-    struct NFTMarketItem {
-        address contractAddress; // nft contract address
-        uint256 tokenId; // nft tokenId
-        uint256 amount; // nft amount
+    struct DerivativeTokenMarketItem {
+        address contractAddress; // derivative token contract address
+        uint256 tokenId; // derivative token tokenId
+        uint256 amount; // derivative token amount
         uint256 price;  // price (USDT (decimals 6) or BNB (decimals 18))
         address seller; // seller wallet address
     }
 
-    mapping(uint256 => NFTMarketItem) public _marketItemMap;
-    mapping(address => bool) nftContractMap;
+    mapping(uint256 => DerivativeTokenMarketItem) public _marketItemMap;
+    mapping(address => bool) derivativeTokenContractMap;
     Counters.Counter private _marketItemIds;
     address public usdtContractAddress;
     address public operatorManager;
@@ -42,13 +42,13 @@ contract NftMarket is ERC1155Holder {
         bool isBnb
     );
 
-    event VerificationNftContract(
-        address indexed nftContract,
+    event VerificationDerivativeTokenContract(
+        address indexed derivativeTokenContract,
         bool isVerified
     );
 
     event TokenPlaced(
-        address indexed nftContract,
+        address indexed derivativeTokenContract,
         uint256 indexed tokenId,
         uint256 indexed marketId,
         uint256 amount,
@@ -56,7 +56,7 @@ contract NftMarket is ERC1155Holder {
         uint256 price);
 
     event TokenUnPlaced(
-        address indexed nftContract,
+        address indexed derivativeTokenContract,
         uint256 indexed tokenId,
         uint256 indexed marketId,
         uint256 deductedAmount,
@@ -65,7 +65,7 @@ contract NftMarket is ERC1155Holder {
         uint256 price);
 
     event TokenSold(
-        address indexed nftContract,
+        address indexed derivativeTokenContract,
         uint256 indexed tokenId,
         uint256 indexed marketId,
         uint256 amount,
@@ -99,22 +99,22 @@ contract NftMarket is ERC1155Holder {
         isWhitelistEnabled = _status;
     }
 
-    function verifyNftContract(address _nftContract) external operatorsOnly {
-        nftContractMap[_nftContract] = true;
-        emit VerificationNftContract(_nftContract, true);
+    function verifyDerivativeTokenContract(address _derivativeTokenContract) external operatorsOnly {
+        derivativeTokenContractMap[_derivativeTokenContract] = true;
+        emit VerificationDerivativeTokenContract(_derivativeTokenContract, true);
     }
 
 
-    function unVerifyNftContract(address _nftContract) external operatorsOnly {
-        nftContractMap[_nftContract] = false;
-        emit VerificationNftContract(_nftContract, false);
+    function unVerifyDerivativeTokenContract(address _derivativeTokenContract) external operatorsOnly {
+        derivativeTokenContractMap[_derivativeTokenContract] = false;
+        emit VerificationDerivativeTokenContract(_derivativeTokenContract, false);
     }
 
     // place voucher token to sell
     // _amount : amount
-    // _nftContract : contract address of nft
-    // _tokenId : nft tokenId
-    // _perNftPrice : 1 nft if isBnB decimal 18 if not Bnb decimal in 6 (for usdt)
+    // _derivativeTokenContract : contract address of derivative token
+    // _tokenId : derivative token tokenId
+    // _perDerivativeTokenPrice : 1 derivative token if isBnB decimal 18 if not Bnb decimal in 6 (for usdt)
     // _isBnb : if true -> BNB, if not true -> USDT
 
     // if(isApproval()) {
@@ -123,42 +123,42 @@ contract NftMarket is ERC1155Holder {
     //  setApprovalForAll();
     //  place();
     // }
-    // setApprovalForAll (_nftMarketContract, true);
-    function place(uint256 _amount, address _nftContract, uint256 _tokenId, uint256 _perNftPrice) external {
-        // check nft contract verification
-        require(nftContractMap[_nftContract], "Not Valid Nft Contract");
+    // setApprovalForAll (_derivativeTokenMarketContract, true);
+    function place(uint256 _amount, address _derivativeTokenContract, uint256 _tokenId, uint256 _perDerivativeTokenPrice) external {
+        // check derivative token contract verification
+        require(derivativeTokenContractMap[_derivativeTokenContract], "Not Valid Derivative Token Contract");
         // check amount must be higher than 0
         require(_amount > 0, "Must be higher than zero");
-        require(_perNftPrice >= IPrice(_nftContract).getCarbonPrice(_tokenId), "min carbon price issue");
+        require(_perDerivativeTokenPrice >= IPrice(_derivativeTokenContract).getCarbonPrice(_tokenId), "min carbon price issue");
         // check for whitelist
         if (isWhitelistEnabled) {
-            require(IWhitelist(whitelistManager).isWhitelist(_nftContract, _tokenId, msg.sender), "not in whitelist");
+            require(IWhitelist(whitelistManager).isWhitelist(_derivativeTokenContract, _tokenId, msg.sender), "not in whitelist");
         }
         // increment marketId
         _marketItemIds.increment();
         uint256 marketId = _marketItemIds.current();
         // create market map for each marketId
-        _marketItemMap[marketId] = NFTMarketItem(
-            _nftContract,
+        _marketItemMap[marketId] = DerivativeTokenMarketItem(
+            _derivativeTokenContract,
             _tokenId,
             _amount,
-            _perNftPrice,
+            _perDerivativeTokenPrice,
             address(msg.sender)
         );
-        // nft : transfer from seller wallet to contract
-        IERC1155(_nftContract).safeTransferFrom(msg.sender, address(this), _tokenId, _amount, "");
+        // derivative token : transfer from seller wallet to contract
+        IERC1155(_derivativeTokenContract).safeTransferFrom(msg.sender, address(this), _tokenId, _amount, "");
         // trigger event
-        emit TokenPlaced(_nftContract, _tokenId, marketId, _amount, address(msg.sender), _perNftPrice);
+        emit TokenPlaced(_derivativeTokenContract, _tokenId, marketId, _amount, address(msg.sender), _perDerivativeTokenPrice);
     }
 
-    // unPlace : cancel nft token amount
+    // unPlace : cancel derivative token token amount
     // _marketId : marketId which is generated from place function
-    // _amount : nft amount to deduct
+    // _amount : derivative token amount to deduct
     function unPlace(uint256 _marketId, uint256 _amount) external {
         // check amount must be higher than 0
         require(_amount > 0, "Must be higher than zero");
         // get marketItem
-        NFTMarketItem storage marketItem = _marketItemMap[_marketId];
+        DerivativeTokenMarketItem storage marketItem = _marketItemMap[_marketId];
         // check owner
         require(marketItem.seller == address(msg.sender) || IOperator(operatorManager).isOperator(address(msg.sender)), "Not ownerOf or Operators");
         // check market amount to deduct
@@ -185,7 +185,7 @@ contract NftMarket is ERC1155Holder {
         // check amount must be higher than 0
         require(_amount > 0, "Must be higher than zero");
         // get marketItem
-        NFTMarketItem storage marketItem = _marketItemMap[_marketId];
+        DerivativeTokenMarketItem storage marketItem = _marketItemMap[_marketId];
         // check amount from market amount
         require(marketItem.amount >= _amount, "Not Enough amount");
         // check for whitelist
